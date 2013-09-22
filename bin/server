@@ -1,0 +1,288 @@
+#!/usr/bin/env node
+
+var port = 8888;
+var url = 'http://localhost:' + port + '/';
+var express = require('express');
+var fs = require('fs')
+var app = express();
+var mongoose = require('mongoose');
+var Schema = mongoose.Schema;
+var Player = require('./player.js');
+var Game = require('./game.js');
+//var db = require('./db.js');
+var passport = require('passport');
+//var fbpassport= require('./fbpassport.js');
+var FacebookStrategy = require('passport-facebook').Strategy;
+
+mongoose.connect(
+		//'mongodb://nodejitsu_cctuan:6css35n570ebkn0oa6sa9bldr8@ds045998.mongolab.com:45998/nodejitsu_cctuan_nodejitsudb9779599541');
+		'mongodb://localhost/test');
+
+if(process.env.SUBDOMAIN){
+  url = 'http://' + process.env.SUBDOMAIN + '.jit.su/';
+}
+
+app.configure(function() {
+	app.use(express.bodyParser());
+	app.use(express.cookieParser());
+	app.use(express.session({ secret: 'keyboard cat' }));
+  app.use(passport.initialize());
+  app.use(passport.session());
+	
+	app.set('views', __dirname + '/../public');
+	app.set('view options', { layout: false });
+	app.use(express.static(__dirname + '/../public'));
+	app.set('view engine', 'ejs');
+});
+
+
+// TODO: move schema to db.js
+startApp();
+
+function startApp() {
+	console.log('App starts');
+	passport.serializeUser(function(player, done) {
+	  done(null, player._id);
+	});
+
+	passport.deserializeUser(function(id, done) {
+		Player.find({'_id': id}, function(result) {
+			done(null, result);
+		}, function(error) {
+			done(error);
+		});
+	});
+
+	passport.use(new FacebookStrategy({
+	  clientID: '286895458099731',
+	  clientSecret: '7cf69b049ee8e8f48750c7d73c18b640',
+	  callbackURL: "http://localhost:8888/auth/facebook/callback"
+		}, function(accessToken, refreshToken, profile, done) {
+	  		var fbid = profile.id;
+	  		Player.findOrCreate({fbid: fbid}, function(result) {
+	  			return done(null, result[0]);
+	  		}, function(error) {
+	  			return done(error);
+	  		});
+	  	}
+	));
+
+
+	// TODO: move route to route.js
+	app.get('/', function(req, res) {
+		console.log(req);
+		var id = req.user ? req.user[0].fbid : '';
+		res.render('index', {id: id});
+	});
+
+	app.get('/login', function(req, res, next) {
+		console.log("_______");
+		console.log(req);
+		res.render('index.ejs');
+	});
+
+	app.get('/join/:id', function(req, res, next) {
+		var id = req.params.id;
+		Game.join(id, req.user[0], function(result) {
+			res.json(result);
+		});
+	});
+
+	app.get('/quit/:id', function(req, res, next) {
+
+	});
+
+	app.get('/player/:id', function(req, res, next) {
+		res.header("Access-Control-Allow-Origin", "*"); 
+		res.header("Access-Control-Allow-Headers", "X-Requested-With");
+		var id = req.params.id;
+		Player.find({'_id': id}, function(result) {
+			res.json(result);
+		}, function(err) {
+			res.send('Bad id');
+		});
+	});
+
+	app.get('/game/:id', function(req, res, next) {
+		res.header("Access-Control-Allow-Origin", "*"); 
+		res.header("Access-Control-Allow-Headers", "X-Requested-With");
+		var id = req.params.id;
+		Game.find({'_id': id}, function(result) {
+			res.json(result);
+		}, function(err) {
+			res.send('Bad id');
+		});
+	});
+
+	app.post('/game', function(req, res, next) {
+		res.header("Access-Control-Allow-Origin", "*"); 
+		res.header("Access-Control-Allow-Headers", "X-Requested-With");
+		var player = req.user[0]._id;
+		var start = req.body.date;
+		var distance = req.body.distance;
+		Game.create({
+			'owner': player, 
+			players: [player], 
+			status: 1,
+			startTime: start,
+			distance: distance
+		}, function(result) {
+			res.json(result);
+		}, function(err) {
+			res.send('Bad id');
+		});
+	});
+
+	app.get('/game/:status', function(req, res, next) {
+		res.header("Access-Control-Allow-Origin", "*"); 
+		res.header("Access-Control-Allow-Headers", "X-Requested-With");
+		var status = req.params.status;
+		Game.find({'status': status}, function(result) {
+			res.json(result);
+		}, function(err) {
+			res.send('Bad status');
+		});
+	});
+
+	app.get('/record/:id', function(req, res, next) {
+		res.header("Access-Control-Allow-Origin", "*"); 
+		res.header("Access-Control-Allow-Headers", "X-Requested-With");
+		var id = req.params.id;
+		Record.find({'_id': id}, function(result) {
+			res.json(result);
+		}, function(err) {
+			res.send('Bad id');
+		});
+	});
+	app.get('/auth/facebook', passport.authenticate('facebook'));
+	app.get('/auth/facebook/callback',
+		passport.authenticate('facebook', { successRedirect: '/',
+    	                                  failureRedirect: '/login' }));
+	/*
+	app.post('/player/new', function(req, res) {
+		res.header("Access-Control-Allow-Origin", "*"); 
+		res.header("Access-Control-Allow-Headers", "X-Requested-With");
+
+		var newPlayer = new Player({applications: []});
+
+		newUser.save(function(err) {
+
+			if (err) {
+
+				console.log(err);
+			}
+			else {
+
+				res.send(newUser);
+			}
+		});
+	});
+	*/
+	app.post('/game/new', function(req, res) {
+		res.header("Access-Control-Allow-Origin", "*"); 
+		res.header("Access-Control-Allow-Headers", "X-Requested-With");
+
+		console.log('**********req.body is ***********');
+		console.log(req.body);
+		var owner = //req.user._id;
+								123456789; // for only test
+		var startTime = req.body.startTime;
+		var distance = req.body.distance;
+		var maximumPlayer = req.body.maximumPlayer;
+		var players = [owner];
+		var status = 1;
+
+		Game.create({
+			owner: owner,
+			startTime: startTime,
+			distance: distance,
+			players: players,
+			status: status,
+			maximumPlayer: maximumPlayer
+		}, function(result) {
+			res.json(result);
+		}, function(error) {
+			res.send('cannot create');
+		})
+	});
+
+	app.post('/record/new', function(req, res) {
+		res.header("Access-Control-Allow-Origin", "*"); 
+		res.header("Access-Control-Allow-Headers", "X-Requested-With");
+
+		var player = req.body.playerid;
+		var gameid = req.body.gameid;
+		var path = req.body.path;
+		Record.create({
+			player: player,
+			gameid: gameid,
+			path: path
+		}, function(result) {
+			res.json(result);
+		}, function(error) {
+			res.send('cannot create');
+		})
+
+	});
+}
+/* We can access nodejitsu enviroment variables from process.env */
+/* Note: the SUBDOMAIN variable will always be defined for a nodejitsu app */
+
+
+/*
+app.get('/', function(req, res){
+  var body = 'Hello World';
+  res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Content-Length', body.length);
+  res.end(body);
+});
+
+app.get('/user/:user', function(req, res, next){
+  res.send('user ' + req.user.name);
+});
+
+app.get('/user/:user', function(req, res, next){
+  res.send('user ' + req.user.name);
+});
+
+*/
+app.listen(port);
+/*
+var http = require('http'),
+    port = 8080,
+    url = 'http://localhost:' + port + '/',
+    fs = require('fs');
+
+var app = http.createServer(handler);
+
+app.listen(port);
+
+function handler(req, res) {
+	fs.readFile(__dirname + '/index.html',
+		function (err, data) {
+			if (err) {
+      	res.writeHead(500);
+      	return res.end('Error loading index.html');
+    	}
+  		res.writeHead(200);
+  		res.end(data);
+  	});
+};
+*/
+
+
+var io = require('socket.io').listen(app);
+
+
+io.sockets.on('connection', function (socket) {
+  socket.emit('news', { hello: 'world' });
+  socket.on('my other event', function (data) {
+    console.log(data);
+  });
+});
+
+
+console.log('The http server has started at: ' + url);
+
+
+

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+
+
+<body>
+  <section id="loginpage" <%if(id){%>class="hide"<%}%>>
+    <a href="/auth/facebook">Login with Facebook</a>
+  </section>
+  <%if(id){%>
+  <section id="main" class="">
+    <ul>
+      <li id="main-newgame" data-navto="newgame">New Game</li>
+      <li id="main-challenge" data-navto="listview">Challenge</li>
+      <li id="main-trophy" data-navto="record">Trophy</li>
+    </ul>
+  </section>
+  <section id="newgame" class="hide">
+    <header>
+      <button data-navto="main">Back</button>
+    </header>
+    <ul>
+      <li>
+        <input type="time" id="start-time" value="10:00">
+      </li>
+      <li>
+        <input type="number" id="distance" value="5">
+      </li>
+      <li>
+        <input type="number" id="number-joiner" value="4">
+      </li>
+    </ul>
+    <footer>
+      <button id="newgame-back">back</button>
+      <button id="newgame-go">Go</button>
+    </footer>
+  </section>
+  <seciton id="listview" class="hide">
+    <ul id="gamelist">
+    </ul>
+  </section>
+  <section id="joingame" class="hide">
+    <header>
+      <button data-navto="main">Back</button>
+    </header>
+    <ul>
+      <li>
+        <div id="join-start-time">20:00</div>
+      </li>
+      <li>
+        <div id="join-distance">5km</div>
+      </li>
+      <li>
+        <div id="join-number">5</div>
+      </li>
+    </ul>
+    <footer>
+      <button id="joingame-back">back</button>
+      <button id="joingame-go">Go</button>
+    </footer>
+  </section>
+  <section id="record" class="hide">
+  </section>
+  <section id="route" class="hide">
+  </section>
+  <%}%>
+
+<button id="trigger">START</button>
+<p id="message"></p>
+<ul id="demo"></ul>
+<script>
+(function() {
+  var arrayMethods = Object.getOwnPropertyNames( Array.prototype );
+
+  arrayMethods.forEach( attachArrayMethodsToNodeList );
+
+  function attachArrayMethodsToNodeList(methodName) {
+    NodeList.prototype[methodName] = Array.prototype[methodName];
+  };
+
+  var pages = ['main', 'newgame', 'listview', 'joingame', 'record', 'route'];
+  var elements =
+    ['main-newgame', 'main-challenge', 'main-trophy', 'start-time',
+      'distance', 'number-joiner', 'newgame-back', 'newgame-go',
+      'gamelist', 'join-start-time', 'join-distance', 'join-number',
+       'joingame-back', 'joingame-go'];
+
+  var backs = document.querySelectorAll('button[data-navto]');
+  var Pages = {};
+  var Eles = {};
+
+  pages.forEach(function(page) {
+    Pages[page] = document.getElementById(page);
+  });
+
+  var currentPage = Pages.main;
+
+  elements.forEach(function(ele) {
+    Eles[toCamelCase(ele)] = document.getElementById(ele);
+  });
+
+  backs.forEach(function(backbtn) {
+    var tar = backbtn.dataset.navto;
+    backbtn.addEventListener('click', function () {
+      currentPage.classList.add('hide');
+      Pages[tar].classList.remove('hide');
+      currentPage = Pages[tar];
+    });
+  });
+
+  var mainNavs = ['mainNewgame', 'mainChallenge', 'mainTrophy'];
+
+  mainNavs.forEach(function(nav) {
+    var tar = Eles[nav].dataset.navto;
+    Eles[nav].addEventListener('click', function() {
+      currentPage.classList.add('hide');
+      Pages[tar].classList.remove('hide');
+      currentPage = Pages[tar];
+    });
+  });
+
+
+
+  function toCamelCase(str) {
+    return str.replace(/\-(.)/g, function replacer(str, p1) {
+      return p1.toUpperCase();
+    });
+  };
+
+  // new game page
+  Eles.newgameGo.addEventListener('click', newgame);
+
+
+  function newgame() {
+    var startTime = Eles.startTime.value;
+    var dist = Eles.distance.value;
+    var playernum = Eles.numberJoiner.value;
+
+    xhttp(function(result) {
+      console.log(result);
+    }, '/game/new', 'POST', {
+      startTime: Date.now(),
+      distance: dist,
+      maximumPlayer: playernum
+    });
+  }
+
+  function xhttp(callback, url, type, data) {
+    var xhr = new XMLHttpRequest();
+
+    xhr.open(type, url, true);
+    xhr.responseType = "json";
+    xhr.overrideMimeType('application/json');
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onreadystatechange = function(e) {
+      if (xhr.readyState === 4) {
+        if (xhr.status === 200) {
+          if (typeof callback === 'function') {
+            callback(xhr.responseText);
+          }
+        } else {
+          if (typeof callback === 'function') {
+            if (xhr.responseText) {
+              callback(xhr.responseText);
+            } else {
+              callback('Unknown error');
+            }
+          }
+        }
+      }
+    }
+    xhr.send(JSON.stringify(data));
+    function parseJsonToParams(jso) {
+      if (typeof jso !== 'object') {
+        return;
+      }
+      var str = '';
+      for(var key in jso) {
+        str += (key + '=' + jso[key] + '&');
+      }
+      return str.slice(0, -1);
+    }
+  }
+
+
+  Number.prototype.toRad = function() {
+    return this * Math.PI / 180;
+  }
+  var watcher = null;
+  var TIMER = 100;
+  var timer;
+  var counting = false;
+  var data = document.getElementById('demo');
+  var msg = document.getElementById('message');
+  var triggerBtn = document.getElementById('trigger');
+  var lat = lng = 0;
+  var distance = 0;
+  var options = {
+    enableHighAccuracy: true,
+    timeout: 5000,
+    maximumAge: 0
+  };
+
+  triggerBtn.addEventListener('click', trigger);
+  function getLocation() {
+    //msg.innerHTML = 'total = ' + distance + 'm';
+    //navigator.geolocation.getCurrentPosition(showPosition);
+  }
+
+  function showPosition(position) {
+    var li = document.createElement('li');
+    var dist = 0;
+    if (lat !== 0 && lng !== 0) {
+      var dist = caldistance(lat, lng, position.coords.latitude, position.coords.longitude);
+    }
+
+    lat = position.coords.latitude;
+    lng = position.coords.longitude;
+    distance += dist;
+    li.innerHTML = 'speed : ' + (dist / TIMER * 1000) + ' m/s'; 
+    msg.innerHTML = 'total = ' + distance + 'm';
+    if(counting)
+      data.appendChild(li);
+  }
+
+  function caldistance(lat1, lon1, lat2, lon2) {
+    var R = 6371; // km
+    var dLat = (lat2 - lat1).toRad();
+    var dLon = (lon2 - lon1).toRad(); 
+    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1.toRad()) * Math.cos(lat2.toRad()) * 
+            Math.sin(dLon / 2) * Math.sin(dLon / 2); 
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
+    var d = R * c;
+    return d;
+  }
+  function error(err) {
+    console.log('ERROR(' + err.code + '): ' + err.message);
+    trigger();
+  }
+
+  function start() {
+    if (!navigator.geolocation) {
+      trigger();
+      msg.innerHTML = 'Geolocation is not supported by this browser';
+      return;
+    }
+    watcher = navigator.geolocation.watchPosition(showPosition, error, options);
+
+    //timer = setInterval(getLocation, TIMER);
+  }
+  function stop() {
+    navigator.geolocation.clearWatch(watcher);
+    watcher = null;
+    //clearInterval(timer);
+    //timer = null;
+  }
+  function trigger() {
+    msg.innerHTML = '';
+    if (counting) {
+      counting = false;
+      triggerBtn.innerHTML = 'START';
+      stop();
+    } else {
+      counting = true;
+      triggerBtn.innerHTML = 'STOP';
+      start();
+    }
+    data.innerHTML = '';
+    lat = lng = 0;
+  }
+  var host = window.location.origin;
+  var socket = io.connect(host);
+  socket.on('news', function (data) {
+    console.log(data);
+    socket.emit('my other event', { my: 'data' });
+  });
+ })();
+</script>
+</body>
+</html>
